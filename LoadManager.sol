@@ -24,7 +24,7 @@ contract LoanManager {
   }
 
   struct lendInfo {
-    int256 lendId;
+    uint256 lendId;
     uint256 depositTime;
     uint256 amount;
   }
@@ -100,7 +100,7 @@ contract LoanManager {
     _;
   }
 
-  event lendDone(address, uint256, uint256);
+  event lendDone(address who, uint256 howMuch, uint256 when);
 
   function lend() public payable checkMinimalLend {
     netPosition[msg.sender] += msg.value;
@@ -108,7 +108,7 @@ contract LoanManager {
     lendersCounter = userLendersList.length;
     Lender[msg.sender].push(
       lendInfo({
-        lendId: int256(Lender[msg.sender].length),
+        lendId: uint256(Lender[msg.sender].length),
         depositTime: block.timestamp,
         amount: msg.value
       })
@@ -116,37 +116,50 @@ contract LoanManager {
     emit lendDone(msg.sender, msg.value, block.timestamp);
   }
 
-  function getInterestMatured() public returns (uint256) {
-    interestMatured[msg.sender] = calculateInterest(msg.sender);
+  function updateInterestMatured() public returns (uint256) {
+    return calculateInterestMatured();
+  }
+
+  function calculateInterestMatured() internal returns (uint256) {
+    uint256 totalInterest;
+    for (uint256 i = 0; Lender[msg.sender].length > i; i++) {
+      if (Lender[msg.sender][i].amount == 0) continue;
+      totalInterest +=
+        ((block.timestamp - Lender[msg.sender][i].depositTime) *
+          lendAPY *
+          Lender[msg.sender][i].amount) /
+        (100 * 365 days);
+    }
+    interestMatured[msg.sender] = totalInterest;
     return interestMatured[msg.sender];
   }
 
-  function calculateInterest(address _address) public view returns (uint256) {
-    uint256 totalInterest;
+  event withdrawDone(address who, uint256 howMuch, uint256 when);
 
-    for (uint256 i = 0; Lender[_address].length > i; i++) {
-      if (Lender[_address][i].amount == 0) continue;
-      totalInterest +=
-        ((block.timestamp - Lender[_address][i].depositTime) *
-          lendAPY *
-          Lender[_address][i].amount) /
-        (100 * 365 days);
+  function withdraw(uint256 amount) public payable checkNetPosition(amount) {
+    uint256 startingAmount = amount;
+    for (uint256 i = 0; i < Lender[msg.sender].length; i++) {
+      if (amount > Lender[msg.sender][i].amount) {
+        amount -= Lender[msg.sender][i].amount;
+        Lender[msg.sender][i].amount = 0;
+      } else if (Lender[msg.sender][i].amount >= amount) {
+        Lender[msg.sender][i].amount -= amount;
+        break;
+      }
     }
-    return totalInterest;
-  }
-
-  function withdraw(uint256 amount) public checkNetPosition(amount) {
-    netPosition[msg.sender] -= amount;
-    (bool result, ) = payable(msg.sender).call{ value: amount }('');
+    netPosition[msg.sender] -= startingAmount;
+    (bool result, ) = payable(msg.sender).call{ value: startingAmount }('');
     require(result, 'Transaction failed');
+    require(amount == 0, 'Not enough funds in deposits to cover withdrawal');
+    emit withdrawDone(msg.sender, startingAmount, block.timestamp);
   }
 
   function withdrawInterest() public {
-    (bool success, ) = msg.sender.call{ value: calculateInterest(msg.sender) }('');
-    require(success, 'Transaction failed');
     for (uint256 i = 0; Lender[msg.sender].length > i; i++) {
       Lender[msg.sender][i].depositTime = block.timestamp;
     }
+    (bool success, ) = msg.sender.call{ value: calculateInterestMatured() }('');
+    require(success, 'Transaction failed');
   }
 
   function openBorrow(
@@ -163,7 +176,7 @@ contract LoanManager {
     } else if (_weeks >= 104 && _weeks <= 260) {
       APY = 5;
     }
-    uint256 _paybackAmount = amount + ((amount * APY) / 100);
+    uint256 _paybackAmount = amount + ((amount * APY * _weeks) / (100 * 52));
     (bool success, ) = msg.sender.call{ value: amount }('');
     require(success, 'Transaction failed');
     Borrower[msg.sender][counter] = borrowInfo('active', _dueDate, APY, amount, _paybackAmount);
