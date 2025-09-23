@@ -2,7 +2,55 @@
 
 pragma solidity ^0.8.0;
 
+struct lendInfo {
+  uint256 lendId;
+  uint256 depositTime;
+  uint256 amount;
+}
+
+struct borrowInfo {
+  uint256 startDate;
+  uint256 endDate;
+  uint256 borrowId;
+  string state;
+  uint256 dueDate;
+  uint256 APY;
+  uint256 borrowAmount;
+  uint256 paybackAmount;
+}
+
+library InterestLib {
+  function calculateInterestMatured(
+    mapping(address => lendInfo[]) storage Lender,
+    address user,
+    uint256 lendAPY
+  ) internal view returns (uint256) {
+    uint256 totalInterest;
+    for (uint256 i = 0; i < Lender[user].length; i++) {
+      if (Lender[user][i].amount == 0) continue;
+      totalInterest +=
+        ((block.timestamp - Lender[user][i].depositTime) * lendAPY * Lender[user][i].amount) /
+        (100 * 365 days);
+    }
+    return totalInterest;
+  }
+
+  function calculatePenalty(
+    mapping(address => borrowInfo[]) storage Borrower,
+    uint256 borrowNumber,
+    uint256 penalty
+  ) internal view returns (uint256) {
+    uint256 daysLate = (block.timestamp - Borrower[msg.sender][borrowNumber].dueDate) / 1 days;
+    uint256 penaltyAmount = (Borrower[msg.sender][borrowNumber].borrowAmount * penalty * daysLate) /
+      (100 * 365);
+    return penaltyAmount;
+  }
+}
+
 contract LoanManager {
+  using InterestLib for mapping(address => borrowInfo[]);
+  using InterestLib for mapping(address => lendInfo[]);
+
   address public owner;
   address[] private userAddressList;
   address[] private userBorrowersList;
@@ -10,33 +58,20 @@ contract LoanManager {
   uint256 public borrowersCounter;
   uint256 public lendersCounter;
   uint256 public lendAPY = 3;
+  uint256 public penalty = 25;
+  bool private locked;
 
   function getContractBalance() public view returns (uint256) {
     return address(this).balance;
   }
 
-  struct borrowInfo {
-    string state;
-    uint256 dueDate;
-    uint256 APY;
-    uint256 borrowAmount;
-    uint256 paybackAmount;
-  }
-
-  struct lendInfo {
-    uint256 lendId;
-    uint256 depositTime;
-    uint256 amount;
-  }
-
-  mapping(address => mapping(int256 borrowId => borrowInfo)) public Borrower;
+  mapping(address => borrowInfo[]) public Borrower;
   mapping(address => int256) public borrowCount;
 
   mapping(address => lendInfo[]) public Lender;
   mapping(address => uint256) public interestMatured;
 
   mapping(address => uint256) public netPosition;
-  mapping(address => bool isActive) public isAddressActive;
 
   constructor() {
     owner = msg.sender;
@@ -86,12 +121,12 @@ contract LoanManager {
 
   //controllo l' intervallo della somma da prednere in prestito/ritirare
   modifier checkMinimalBorrow(uint256 amount) {
-    require(amount > 0.2 ether, 'Minmum borrow is 0.2 Eth');
+    require(amount > 0.2 ether, 'Minimal borrow is 0.2 Eth');
     _;
   }
 
   modifier checkMinimalLend() {
-    require(msg.value > 0.1 ether, 'Minmum borrow is 0.1 Eth');
+    require(msg.value > 0.1 ether, 'Minimal lend is 0.1 Eth');
     _;
   }
 
@@ -100,7 +135,23 @@ contract LoanManager {
     _;
   }
 
+  modifier nonReentrant() {
+    require(!locked, 'Reentrancy');
+    locked = true;
+    _;
+    locked = false;
+  }
+
+  modifier checkContractBalance(uint256 amount) {
+    require(this.getContractBalance() >= amount);
+    _;
+  }
+
   event lendDone(address who, uint256 howMuch, uint256 when);
+
+  event borrowRepaid(address who, uint256 howmuch, uint256 when, uint256 initialBorrow);
+
+  event withdrawDone(address who, uint256 howMuch, uint256 when);
 
   function lend() public payable checkMinimalLend {
     netPosition[msg.sender] += msg.value;
@@ -108,7 +159,7 @@ contract LoanManager {
     lendersCounter = userLendersList.length;
     Lender[msg.sender].push(
       lendInfo({
-        lendId: uint256(Lender[msg.sender].length),
+        lendId: uint256(Lender[msg.sender].length) + 1,
         depositTime: block.timestamp,
         amount: msg.value
       })
@@ -117,26 +168,14 @@ contract LoanManager {
   }
 
   function updateInterestMatured() public returns (uint256) {
-    return calculateInterestMatured();
-  }
-
-  function calculateInterestMatured() internal returns (uint256) {
-    uint256 totalInterest;
-    for (uint256 i = 0; Lender[msg.sender].length > i; i++) {
-      if (Lender[msg.sender][i].amount == 0) continue;
-      totalInterest +=
-        ((block.timestamp - Lender[msg.sender][i].depositTime) *
-          lendAPY *
-          Lender[msg.sender][i].amount) /
-        (100 * 365 days);
-    }
+    uint256 totalInterest = Lender.calculateInterestMatured(msg.sender, lendAPY);
     interestMatured[msg.sender] = totalInterest;
     return interestMatured[msg.sender];
   }
 
-  event withdrawDone(address who, uint256 howMuch, uint256 when);
-
-  function withdraw(uint256 amount) public payable checkNetPosition(amount) {
+  function withdraw(uint256 amount) public checkNetPosition(amount) nonReentrant {
+    require(amount > 0, 'Amount must be greater than zero');
+    require(netPosition[msg.sender] >= amount, 'Not enough funds in deposits to cover withdrawal');
     uint256 startingAmount = amount;
     for (uint256 i = 0; i < Lender[msg.sender].length; i++) {
       if (amount > Lender[msg.sender][i].amount) {
@@ -150,23 +189,32 @@ contract LoanManager {
     netPosition[msg.sender] -= startingAmount;
     (bool result, ) = payable(msg.sender).call{ value: startingAmount }('');
     require(result, 'Transaction failed');
-    require(amount == 0, 'Not enough funds in deposits to cover withdrawal');
     emit withdrawDone(msg.sender, startingAmount, block.timestamp);
   }
 
-  function withdrawInterest() public {
+  function withdrawInterest() public nonReentrant {
+    uint256 interest = updateInterestMatured();
+    require(interest > 0, 'No interest to withdraw');
+    (bool success, ) = msg.sender.call{ value: interest }('');
+    require(success, 'Transaction failed');
     for (uint256 i = 0; Lender[msg.sender].length > i; i++) {
       Lender[msg.sender][i].depositTime = block.timestamp;
     }
-    (bool success, ) = msg.sender.call{ value: calculateInterestMatured() }('');
-    require(success, 'Transaction failed');
   }
 
   function openBorrow(
     uint256 _weeks,
     uint256 amount
-  ) public payable checkWeeksRange(_weeks) checkMinimalBorrow(amount) {
-    int256 counter = borrowCount[msg.sender]++;
+  )
+    public
+    payable
+    checkWeeksRange(_weeks)
+    checkMinimalBorrow(amount)
+    checkContractBalance(amount)
+    nonReentrant
+  {
+    borrowCount[msg.sender]++;
+    netPosition[msg.sender] -= amount;
     uint256 _dueDate = block.timestamp + (_weeks * 604800);
     uint256 APY;
     if (_weeks < 24) {
@@ -175,12 +223,61 @@ contract LoanManager {
       APY = 6;
     } else if (_weeks >= 104 && _weeks <= 260) {
       APY = 5;
-    }
+    } else APY = 4;
     uint256 _paybackAmount = amount + ((amount * APY * _weeks) / (100 * 52));
-    (bool success, ) = msg.sender.call{ value: amount }('');
-    require(success, 'Transaction failed');
-    Borrower[msg.sender][counter] = borrowInfo('active', _dueDate, APY, amount, _paybackAmount);
+    Borrower[msg.sender].push(
+      borrowInfo({
+        startDate: block.timestamp,
+        endDate: 0,
+        borrowId: uint256(Borrower[msg.sender].length) + 1,
+        state: 'Active',
+        dueDate: _dueDate,
+        APY: APY,
+        borrowAmount: amount,
+        paybackAmount: _paybackAmount
+      })
+    );
     checkCategoryRegistration(userBorrowersList, userLendersList);
     borrowersCounter = userBorrowersList.length;
+    (bool success, ) = msg.sender.call{ value: amount }('');
+    require(success, 'Transaction failed');
+  }
+
+  function calculatePenalty(uint256 borrowNumber) internal view returns (uint256) {
+    uint256 penaltyAmount = Borrower.calculatePenalty(borrowNumber, penalty);
+    return penaltyAmount;
+  }
+
+  function payBorrow(uint256 borrowNumber) public payable nonReentrant {
+    require(
+      keccak256(bytes(Borrower[msg.sender][borrowNumber].state)) == keccak256(bytes('Active')),
+      'Borrow selected not active'
+    );
+    require(msg.value > 0, 'Repayment must be more than 0');
+    require(borrowNumber < Borrower[msg.sender].length, 'Invalid borrow index');
+
+    if (block.timestamp > Borrower[msg.sender][borrowNumber].dueDate) {
+      Borrower[msg.sender][borrowNumber].paybackAmount += calculatePenalty(borrowNumber);
+    }
+
+    if (msg.value > Borrower[msg.sender][borrowNumber].paybackAmount) {
+      uint256 difference = msg.value - Borrower[msg.sender][borrowNumber].paybackAmount;
+      netPosition[msg.sender] += msg.value - difference;
+      Borrower[msg.sender][borrowNumber].state = 'Paid';
+      (bool success, ) = msg.sender.call{ value: difference }('');
+      require(success, 'Transaction failed');
+    } else if (msg.value == Borrower[msg.sender][borrowNumber].paybackAmount) {
+      netPosition[msg.sender] += msg.value;
+      Borrower[msg.sender][borrowNumber].state = 'Paid';
+    } else {
+      revert('Payment is lower than the amount requested');
+    }
+    Borrower[msg.sender][borrowNumber].endDate = block.timestamp;
+    emit borrowRepaid(
+      msg.sender,
+      Borrower[msg.sender][borrowNumber].paybackAmount,
+      block.timestamp,
+      Borrower[msg.sender][borrowNumber].borrowAmount
+    );
   }
 }

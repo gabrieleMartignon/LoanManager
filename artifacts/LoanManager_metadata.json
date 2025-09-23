@@ -22,6 +22,37 @@
 					{
 						"indexed": false,
 						"internalType": "uint256",
+						"name": "howmuch",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "when",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "initialBorrow",
+						"type": "uint256"
+					}
+				],
+				"name": "borrowRepaid",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "address",
+						"name": "who",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
 						"name": "howMuch",
 						"type": "uint256"
 					},
@@ -68,13 +99,28 @@
 						"type": "address"
 					},
 					{
-						"internalType": "int256",
-						"name": "borrowId",
-						"type": "int256"
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
 					}
 				],
 				"name": "Borrower",
 				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "startDate",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endDate",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "borrowId",
+						"type": "uint256"
+					},
 					{
 						"internalType": "string",
 						"name": "state",
@@ -229,25 +275,6 @@
 				"type": "function"
 			},
 			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "isAddressActive",
-				"outputs": [
-					{
-						"internalType": "bool",
-						"name": "isActive",
-						"type": "bool"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
 				"inputs": [],
 				"name": "lend",
 				"outputs": [],
@@ -331,6 +358,32 @@
 				"type": "function"
 			},
 			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "borrowNumber",
+						"type": "uint256"
+					}
+				],
+				"name": "payBorrow",
+				"outputs": [],
+				"stateMutability": "payable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "penalty",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
 				"inputs": [],
 				"name": "updateInterestMatured",
 				"outputs": [
@@ -353,7 +406,7 @@
 				],
 				"name": "withdraw",
 				"outputs": [],
-				"stateMutability": "payable",
+				"stateMutability": "nonpayable",
 				"type": "function"
 			},
 			{
@@ -392,11 +445,11 @@
 	},
 	"sources": {
 		"LoadManager.sol": {
-			"keccak256": "0xa2cfec8881fb693a165d99b38f659dc37e2228e82d664e9da8da2accb2587eda",
+			"keccak256": "0x370d46ee271553bbd7c5a883e74b0179e6de750116d8b0b60bf4d197758c965e",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://3a89e78e94e2209e14d6d20368943b0a3e190bc08b485e4d1e6ea46b947f5bcf",
-				"dweb:/ipfs/QmWp8phAvk99M69vQc596SfA5K24FeyCVpkW4Vwpqvu1Q1"
+				"bzz-raw://fc472714dc65e3a84a96cb64b65889655ca569a3f7b9f422a4d7c9760b44c813",
+				"dweb:/ipfs/QmVfK9ABTrWNuUVdMamBuwVSj6FB8pKvxUb9fgBUrxGn1Z"
 			]
 		}
 	},
