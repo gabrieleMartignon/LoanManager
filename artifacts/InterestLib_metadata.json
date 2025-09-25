@@ -33,11 +33,11 @@
 	},
 	"sources": {
 		"LoadManager.sol": {
-			"keccak256": "0xf9de82c9dd21e6b94058750b128194c422d4597666651aeddb1cfa6d8847beb6",
+			"keccak256": "0x11292b835c56dbf7448e2f72d56f350869e5b9dc993c92bab7a6c37d67f95add",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://b2c264cd875093af2f856c3b3cac0289c46d1d055cf2620901f3351f765c1d71",
-				"dweb:/ipfs/QmRUgLdnhzhuY8Vz7yZpe3imG7ptm2sL7KKCQ6WH2B9n6e"
+				"bzz-raw://6c520da6fc9dd60e5044db5c9f8f84611418506cbdabbfa6bddb54bc90a6d9a4",
+				"dweb:/ipfs/QmWm4jx4j641eNixhUsXvzxiXBrbDfrrZVGxLoW9g43oti"
 			]
 		}
 	},

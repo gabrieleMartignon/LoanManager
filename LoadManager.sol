@@ -125,12 +125,12 @@ contract LoanManager {
 
  
   modifier checkMinimalBorrow(uint256 amount) {
-    require(amount > 0.2 ether, 'Minimal borrow is 0.2 Eth');
+    require(amount >= 0.2 ether, 'Minimal borrow is 0.2 Eth');
     _;
   }
 
   modifier checkMinimalLend() {
-    require(msg.value > 0.1 ether, 'Minimal lend is 0.1 Eth');
+    require(msg.value >= 0.1 ether, 'Minimal lend is 0.1 Eth');
     _;
   }
 
@@ -222,7 +222,7 @@ contract LoanManager {
     nonReentrant
 {
     borrowCount[msg.sender]++; // Increment the user's borrow counter
-    netPosition[msg.sender] -= amount; // Reduce lender's net position by the borrowed amount
+    
 
     // Calculate loan due date in seconds (604800 = 1 week)
     uint256 _dueDate = block.timestamp + (_weeks * 604800);
@@ -237,6 +237,7 @@ contract LoanManager {
 
     // Calculate total payback amount (principal + interest)
     uint256 _paybackAmount = amount + ((amount * APY * _weeks) / (100 * 52));
+    netPosition[msg.sender] -= _paybackAmount; // Reduce lender's net position by the borrowed amount
 
     // Store loan details in the borrower's record
     Borrower[msg.sender].push(
