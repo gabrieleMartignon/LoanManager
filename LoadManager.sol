@@ -16,7 +16,7 @@ struct borrowInfo {
   uint256 borrowId;
   string state;
   uint256 dueDate;
-  uint256 APY;
+  uint256 APR;
   uint256 borrowAmount;
   uint256 paybackAmount;
 }
@@ -26,14 +26,14 @@ library InterestLib {
   function calculateInterestMatured(
     mapping(address => lendInfo[]) storage Lender,
     address user,
-    uint256 lendAPY
+    uint256 lendAPR
   ) internal view returns (uint256) {
     uint256 totalInterest;
     // for every lend position calculate the interest
     for (uint256 i = 0; i < Lender[user].length; i++) {
       if (Lender[user][i].amount == 0) continue;
       totalInterest +=
-        ((block.timestamp - Lender[user][i].depositTime) * lendAPY * Lender[user][i].amount) /
+        ((block.timestamp - Lender[user][i].depositTime) * lendAPR * Lender[user][i].amount) /
         (100 * 365 days);
     }
     return totalInterest;
@@ -61,7 +61,7 @@ contract LoanManager {
   address[] private userLendersList;
   uint256 public borrowersCounter;
   uint256 public lendersCounter;
-  uint256 public lendAPY = 3; 
+  uint256 public lendAPR = 3; 
   uint256 public penalty = 25; // percentange applied for late borrowers
   bool private locked;
 
@@ -174,7 +174,7 @@ contract LoanManager {
 
   
   function updateInterestMatured() public returns (uint256) {
-    uint256 totalInterest = Lender.calculateInterestMatured(msg.sender, lendAPY);
+    uint256 totalInterest = Lender.calculateInterestMatured(msg.sender, lendAPR);
     interestMatured[msg.sender] = totalInterest;
     return interestMatured[msg.sender];
   }
@@ -227,16 +227,16 @@ contract LoanManager {
     // Calculate loan due date in seconds (604800 = 1 week)
     uint256 _dueDate = block.timestamp + (_weeks * 604800);
 
-    // Determine APY based on loan duration
-    uint256 APY;
+    // Determine APR based on loan duration
+    uint256 APR;
     if (_weeks < 24) {
-        APY = 7;
+        APR = 7;
     } else if (_weeks >= 24 && _weeks < 104) {
-        APY = 6;
-    } else APY = 5;
+        APR = 6;
+    } else APR = 5;
 
     // Calculate total payback amount (principal + interest)
-    uint256 _paybackAmount = amount + ((amount * APY * _weeks) / (100 * 52));
+    uint256 _paybackAmount = amount + ((amount * APR * _weeks) / (100 * 52));
     netPosition[msg.sender] -= _paybackAmount; // Reduce lender's net position by the borrowed amount
 
     // Store loan details in the borrower's record
@@ -247,7 +247,7 @@ contract LoanManager {
         borrowId: uint256(Borrower[msg.sender].length) + 1,
         state: 'Active',
         dueDate: _dueDate,
-        APY: APY,
+        APR: APR,
         borrowAmount: amount,
         paybackAmount: _paybackAmount
       })
